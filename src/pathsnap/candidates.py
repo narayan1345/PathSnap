@@ -46,6 +46,7 @@ class ProjectedRoadGraph:
 
 
 def _project_trip(track: pd.DataFrame, nodes: pd.DataFrame):
+    """Project coordinates to a trip-centred azimuthal-equidistant CRS in metres."""
     lon0 = float(track.longitude.mean())
     lat0 = float(track.latitude.mean())
     local_crs = (
@@ -69,8 +70,7 @@ def _build_graph(nodes: pd.DataFrame, arcs: pd.DataFrame, node_xy: np.ndarray):
     dst = arcs.to_node_id.to_numpy(dtype=np.int64)
     if ((src < 0) | (src >= len(nodes)) | (dst < 0) | (dst >= len(nodes))).any():
         raise ValueError("Arc endpoint is outside the 0-based node index range.")
-    start = node_xy[src]
-    end = node_xy[dst]
+    start, end = node_xy[src], node_xy[dst]
     vectors = end - start
     lengths = np.linalg.norm(vectors, axis=1)
     midpoints = (start + end) / 2.0
@@ -87,8 +87,7 @@ def _build_graph(nodes: pd.DataFrame, arcs: pd.DataFrame, node_xy: np.ndarray):
 
 def _point_segment_features(point_xy: np.ndarray, graph: ProjectedRoadGraph,
                              arc_ids: np.ndarray):
-    starts = graph.start_xy[arc_ids]
-    vectors = graph.vectors[arc_ids]
+    starts, vectors = graph.start_xy[arc_ids], graph.vectors[arc_ids]
     denom = np.einsum("ij,ij->i", vectors, vectors)
     numer = np.einsum("ij,ij->i", point_xy - starts, vectors)
     fraction = np.divide(numer, denom, out=np.zeros_like(numer), where=denom > 1e-12)
@@ -101,15 +100,16 @@ def _point_segment_features(point_xy: np.ndarray, graph: ProjectedRoadGraph,
 
 def _nearest_reference_arc(point_xy: np.ndarray, route_ids: np.ndarray,
                            graph: ProjectedRoadGraph, k: int = 12) -> tuple[int, float]:
-    """Find the closest reference-route arc by point-to-segment distance."""
+    """Find the closest supplied reference-route arc by point-to-segment distance."""
     if len(route_ids) == 0:
         return -1, float("nan")
     unique_ids = np.unique(route_ids.astype(np.int64))
+    if ((unique_ids < 0) | (unique_ids >= len(graph.start_xy))).any():
+        raise ValueError("Reference route contains an arc ID outside the arc table.")
     tree = cKDTree(graph.midpoint_xy[unique_ids])
     count = min(k, len(unique_ids))
     _, local_indices = tree.query(point_xy, k=count)
-    local_indices = np.atleast_1d(local_indices).astype(int)
-    candidate_ids = unique_ids[local_indices]
+    candidate_ids = unique_ids[np.atleast_1d(local_indices).astype(int)]
     distances, _, _ = _point_segment_features(point_xy, graph, candidate_ids)
     best = int(np.argmin(distances))
     return int(candidate_ids[best]), float(distances[best])
@@ -131,6 +131,7 @@ def generate_candidates(
     Returns (candidate_rows, observation_rows). Candidate rows contain one row
     per observation/road-arc pair and a binary target flag. Observation rows
     contain a spatially nearest reference-arc target and candidate-miss flag.
+    The reference arc is only used to define the target, never as an input feature.
     """
     if candidate_k < 1 or observation_stride < 1:
         raise ValueError("candidate_k and observation_stride must both be >= 1.")
@@ -147,23 +148,27 @@ def generate_candidates(
         candidate_indices = candidate_indices.reshape(-1, 1)
     candidate_indices = candidate_indices.astype(np.int64)
 
-    # GPS movement direction and speed use the next raw observation, not a
-    # coordinate difference in angular degrees.
+    # GPS movement direction/speed are computed from consecutive observations
+    # using projected metre coordinates. Time gaps are retained as a separate feature.
     dx = np.zeros(len(track), dtype=float)
     dy = np.zeros(len(track), dtype=float)
-    distance = np.zeros(len(track), dtype=float)
-    dt = track.timestamp.diff().to_numpy(dtype=float)
-    dt[0] = np.nan
+    displacement = np.zeros(len(track), dtype=float)
+    timestamp = track.timestamp.to_numpy(dtype=float)
+    backward_gap = np.diff(timestamp, prepend=timestamp[0])
+    forward_gap = np.diff(timestamp, append=timestamp[-1])
     if len(track) > 1:
         delta = np.diff(point_xy_all, axis=0)
         dx[:-1], dy[:-1] = delta[:, 0], delta[:, 1]
-        distance[:-1] = np.linalg.norm(delta, axis=1)
+        displacement[:-1] = np.linalg.norm(delta, axis=1)
         dx[-1], dy[-1] = delta[-1, 0], delta[-1, 1]
-        distance[-1] = distance[-2]
+        displacement[-1] = displacement[-2]
+        forward_gap[-1] = forward_gap[-2]
     gps_heading = np.arctan2(dy, dx)
-    time_gap = np.nan_to_num(dt, nan=0.0, posinf=0.0, neginf=0.0)
-    speed = np.divide(distance, dt, out=np.zeros_like(distance),
-                      where=np.isfinite(dt) & (dt > 0))
+    time_gap = np.nan_to_num(backward_gap, nan=0.0, posinf=0.0, neginf=0.0)
+    speed = np.divide(
+        displacement, forward_gap, out=np.zeros_like(displacement),
+        where=np.isfinite(forward_gap) & (forward_gap > 0),
+    )
     speed = np.clip(speed, 0.0, 80.0)
 
     route_ids = route.arc_id.to_numpy(dtype=np.int64)
@@ -224,6 +229,7 @@ def load_trip_folder(folder: Path):
 
 
 def endpoints_for_trip(arcs: pd.DataFrame) -> dict[int, tuple[int, int]]:
+    """Return the trip-local arc_id -> (from_node_id, to_node_id) lookup."""
     return {
         int(arc_id): (int(row.from_node_id), int(row.to_node_id))
         for arc_id, row in arcs.iterrows()
