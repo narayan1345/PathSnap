@@ -168,6 +168,33 @@ def main():
         args.results_dir / "student_test_predictions_tuned_extratrees.csv.gz",
         index=False, compression="gzip",
     )
+
+    # Compare with the untuned ExtraTrees baseline when it has been trained.
+    baseline_path = args.artifacts_dir / "extratrees.joblib"
+    comparison_rows = [{
+        "model": "Optuna-tuned ExtraTrees",
+        "student_test_top1_accuracy": test_metrics["student_test_top1_accuracy"],
+        "student_test_macro_f1_mean_per_trip": test_metrics["student_test_macro_f1_mean_per_trip"],
+        "student_test_candidate_miss_rate": test_metrics["student_test_candidate_miss_rate"],
+    }]
+    if baseline_path.is_file():
+        baseline = joblib.load(baseline_path)
+        baseline_prediction = predict_top_arc(baseline, test_x).merge(
+            test_obs[["observation_key", "target_arc_id", "candidate_miss"]],
+            on="observation_key", how="left", validate="one_to_one",
+        )
+        comparison_rows.insert(0, {
+            "model": "Untuned ExtraTrees baseline",
+            "student_test_top1_accuracy": float(
+                (baseline_prediction.predicted_arc_id == baseline_prediction.target_arc_id).mean()
+            ),
+            "student_test_macro_f1_mean_per_trip": per_trip_macro_f1(baseline_prediction),
+            "student_test_candidate_miss_rate": float(test_obs.candidate_miss.mean()),
+        })
+
+    pd.DataFrame(comparison_rows).to_csv(
+        args.results_dir / "tuned_vs_untuned_comparison.csv", index=False
+    )
     print("Best CV Macro F1:", study.best_value)
     print("Best parameters:", json.dumps(best_params, indent=2))
     print("Student-test metrics:", json.dumps(test_metrics, indent=2))
