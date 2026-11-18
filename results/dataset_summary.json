@@ -1,0 +1,19 @@
+{
+  "trip_counts": {"student_test": 10, "train": 80},
+  "total_trips_inspected": 90,
+  "missing_file_trip_count": 0,
+  "track_observations_total": 227577,
+  "nodes_total": 2024174,
+  "arcs_total": 4061945,
+  "route_entries_total": 34813,
+  "invalid_coordinate_rows_total": 0,
+  "non_monotonic_timestamp_trips": 0,
+  "route_ids_out_of_range_trips": 0,
+  "arc_node_ids_out_of_range_trips": 0,
+  "total_route_connectivity_breaks": 14,
+  "total_time_gaps_over_1s": 7550,
+  "trips_with_max_gap_over_10s": 42,
+  "trips_with_max_gap_over_60s": 23,
+  "largest_time_gap_seconds": 153064,
+  "largest_gap_trip_id": "00000090"
+}
