@@ -1,10 +1,20 @@
 # PathSnap — Distributed Map-Matching & Route Reconstruction
 
-PathSnap is a student project for reconstructing likely road-network routes from noisy GPS trajectories. The repository is organised to support data exploration, candidate generation, feature engineering, supervised experiments, HMM/Viterbi sequence decoding, evaluation, and a small FastAPI/UI layer.
+PathSnap is a student project for reconstructing likely road-network routes from noisy GPS trajectories.
 
-## Project status
+## Current implementation status
 
-This repository currently contains the project scaffold and a runnable dataset-inspection pipeline. Model training, Bayesian optimisation, HMM/Viterbi decoding, and the API/UI are planned components and must be implemented and evaluated before they can be described as complete.
+Implemented and executed against the supplied 80-trip training and 10-trip student-testing partitions:
+
+- Read-only per-trip data inventory for the four supplied file types.
+- GPS coordinate and timestamp quality checks.
+- Arc/node identifier range checks.
+- Road-graph weak-component and degree statistics.
+- Reference-route arc-to-arc connectivity checks.
+- Folium map generation comparing observed GPS points with the supplied reference route.
+- Saved dataset inventory and summary outputs.
+
+Not yet implemented: map-matching candidate generation, feature engineering for supervised learning, five trained models and comparison, Bayesian optimisation, HMM/Viterbi, complete prediction API, evaluator UI, and final report. These must not be presented as completed until implemented and tested.
 
 ## Dataset layout
 
@@ -12,63 +22,72 @@ Place the supplied dataset locally as:
 
 ```
 data/raw/
-├── train/
-│   └── <trip-id>/
-│       ├── <trip-id>.track
-│       ├── <trip-id>.nodes
-│       ├── <trip-id>.arcs
-│       └── <trip-id>.route
-└── student_test/
-    └── <trip-id>/
-        ├── <trip-id>.track
-        ├── <trip-id>.nodes
-        ├── <trip-id>.arcs
-        └── <trip-id>.route
+├── train/<trip-id>/<trip-id>.{track,nodes,arcs,route}
+└── student_test/<trip-id>/<trip-id>.{track,nodes,arcs,route}
 ```
 
-The raw dataset is intentionally excluded from Git. Do not commit evaluator-held data, credentials, virtual environments, or generated model binaries.
+The raw dataset is intentionally excluded from Git. Keep the evaluator-held partition out of development and training.
 
-## Quick start (Windows PowerShell)
+## Setup (Windows PowerShell)
 
 ```powershell
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-python -m pip install -e .
-python scripts/inspect_dataset.py --data-root data/raw
 ```
 
-## Repository structure
+## Run dataset exploration
 
-- `src/pathsnap/data_io.py`: safe trip discovery and basic file loading.
-- `scripts/inspect_dataset.py`: dataset inventory and basic integrity checks.
-- `notebooks/`: exploratory analysis and experiments.
-- `src/pathsnap/`: implementation modules.
-- `api/`: FastAPI application (planned).
-- `ui/`: evaluator interface (planned).
-- `artifacts/`: locally generated model artefacts (not committed).
-- `results/`: locally generated experiment outputs (not committed).
+From the repository root:
 
-## Important evaluation notes
+```powershell
+python src/data_exploration.py --data data/raw --output results --map visualizations/sample_trip_map.html
+```
 
-1. Keep the student test split separate from training and model fitting.
-2. Fit preprocessing and learned transformations on training data only.
-3. Record seeds, package versions, configurations, and evaluation metrics.
-4. Never report fabricated or placeholder model scores.
-5. Document dataset-specific column formats after inspecting the supplied files; do not assume delimiters or ID conventions.
+The script creates:
+
+- `results/trip_inventory.csv`: per-trip counts, timestamp checks, coordinate bounds, graph connectivity and route continuity.
+- `results/missing_files.csv`: any trips with missing expected files.
+- `results/dataset_summary.json`: aggregate dataset audit.
+- `visualizations/sample_trip_map.html`: interactive observed-GPS and reference-route map for the first training trip.
+
+## File semantics
+
+The supplied Dataset Exploration guide specifies:
+
+- `.track`: longitude, latitude, timestamp in seconds; whitespace separated, no header.
+- `.nodes`: longitude, latitude; row index is the 0-based node ID.
+- `.arcs`: from-node ID, to-node ID; row index is the 0-based arc ID.
+- `.route`: chronological sequence of arc IDs.
+
+A GPS row is not assumed to correspond directly to a node or arc row. Use geodesic or projected metre-based distances for spatial calculations, not raw Euclidean distances in longitude/latitude degrees.
+
+## Measured dataset audit
+
+The supplied development data audit found 80 training trips and 10 student-testing trips (90 total), 227,577 GPS observations, 2,024,174 road nodes, 4,061,945 road arcs, and 34,813 reference-route entries. All 90 trips contained the four expected files; the audit found zero invalid GPS coordinate rows, zero non-monotonic timestamp trips, zero route arc IDs out of range, and zero arc endpoint IDs out of range. The first audit also identified 14 adjacent-arc connectivity breaks across the supplied route sequences; these should be investigated rather than silently repaired.
+
+See `results/dataset_summary.json` and `results/trip_inventory.csv` for reproducible details. These are dataset inspection results, not model performance results.
+
+## Data partition and evaluation integrity
+
+- Use the 80 training trips for fitting, development and group-aware cross-validation.
+- Use the 10 student-testing trips for development-stage comparisons.
+- Keep the 10 evaluator-testing trips untouched until final evaluation.
+- Never use evaluator labels for training, feature selection, tuning or UI predictions.
+- Retain seeds, configurations, logs and actual metrics. Do not fabricate model scores or training curves.
 
 ## Development status
 
 | Component | Status |
 |---|---|
-| Repository scaffold | Created |
-| Dataset inventory script | Runnable |
-| Dataset exploration notebook | To be completed |
-| Candidate generation / features | Pending |
-| Five model experiments | Pending |
-| Bayesian optimisation | Pending |
-| HMM / Viterbi | Pending |
-| Route evaluation and maps | Pending |
-| FastAPI backend and UI | Pending |
+| Public repository and project scaffold | Created |
+| Dataset inventory and quality audit | Implemented and run |
+| Folium GPS/reference-route map | Implemented and generated |
+| Candidate generation / supervised features | Pending |
+| Five model experiments and comparison | Pending |
+| Bayesian hyperparameter optimisation | Pending |
+| HMM / Viterbi route decoding | Pending |
+| Classifier vs HMM route evaluation | Pending |
+| FastAPI backend and evaluator UI | Pending |
 | Technical report | Pending |
