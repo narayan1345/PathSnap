@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PathSnap Evaluator</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, system-ui, Arial, sans-serif; }
+    body { margin: 0; background: #f4f6f8; color: #15202b; }
+    main { max-width: 980px; margin: 36px auto; padding: 0 20px; }
+    header, section { background: white; border: 1px solid #dce2e8; border-radius: 14px; padding: 22px; margin-bottom: 16px; }
+    h1 { margin: 0 0 8px; } p { color: #536273; line-height: 1.5; }
+    .controls { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 14px; align-items: end; }
+    label { display: block; font-size: 13px; font-weight: 650; margin-bottom: 6px; }
+    input, select, button { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5df; border-radius: 8px; background: white; }
+    button { background: #173b63; color: white; font-weight: 650; border: none; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #status { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; padding: 12px; background: #f4f6f8; border-radius: 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e5eaf0; }
+    th { background: #f4f6f8; }
+    .hint { font-size: 12px; }
+    @media (max-width: 600px) { main { margin: 16px auto; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>PathSnap</h1>
+    <p>GPS-to-road map matching and route reconstruction. Upload a JSON trip payload exported from the supplied GPS track and road graph. The inference API does not accept or use the reference route.</p>
+  </header>
+  <section>
+    <div class="controls">
+      <div>
+        <label for="trip">Trip payload (.json)</label>
+        <input id="trip" type="file" accept="application/json,.json">
+      </div>
+      <div>
+        <label for="model">Classifier</label>
+        <select id="model">
+          <option value="extratrees">Extra Trees</option>
+          <option value="randomforest">Random Forest</option>
+          <option value="decisiontree">Decision Tree</option>
+          <option value="logisticregression">Logistic Regression</option>
+          <option value="histgradientboosting">Hist Gradient Boosting</option>
+          <option value="tuned_extratrees">Tuned Extra Trees</option>
+        </select>
+      </div>
+      <div>
+        <label for="mode">Sequence decoding</label>
+        <select id="mode">
+          <option value="true" selected>Classifier + HMM/Viterbi</option>
+          <option value="false">Classifier only</option>
+        </select>
+      </div>
+      <div>
+        <button id="run">Run map matching</button>
+      </div>
+    </div>
+    <p class="hint">Start the API locally with <code>uvicorn api.app:app --reload</code>. A trained model file must exist in <code>artifacts/</code>.</p>
+  </section>
+  <section>
+    <h2>Prediction status</h2>
+    <div id="status">Waiting for a trip payload.</div>
+  </section>
+  <section>
+    <h2>Predicted road-segment sequence</h2>
+    <div id="summary"></div>
+    <div style="overflow:auto;max-height:520px">
+      <table>
+        <thead><tr><th>GPS index</th><th>Classifier arc</th><th>Final arc</th><th>Selected probability</th><th>Candidate arcs</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script>
+const fileInput = document.getElementById("trip");
+const runButton = document.getElementById("run");
+const statusBox = document.getElementById("status");
+const rows = document.getElementById("rows");
+const summary = document.getElementById("summary");
+
+runButton.addEventListener("click", async () => {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) {
+    statusBox.textContent = "Select a .json payload first.";
+    return;
+  }
+  runButton.disabled = true;
+  rows.innerHTML = "";
+  summary.textContent = "";
+  statusBox.textContent = "Reading payload and calling local API...";
+  try {
+    const payload = JSON.parse(await file.text());
+    payload.model_name = document.getElementById("model").value;
+    payload.apply_hmm = document.getElementById("mode").value === "true";
+    const response = await fetch("/predict", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || response.statusText);
+    statusBox.textContent = "Completed successfully.";
+    summary.textContent = "Trip: " + result.trip_id + " | Mode: " + result.mode +
+      " | Observations: " + result.observation_count + " | Model: " + result.model_name;
+    for (const point of result.points) {
+      const tr = document.createElement("tr");
+      for (const value of [
+        point.observation_index, point.classifier_arc_id, point.predicted_arc_id,
+        point.selected_probability == null ? "N/A" : Number(point.selected_probability).toFixed(4),
+        point.candidate_arc_ids.join(", ")
+      ]) {
+        const td = document.createElement("td");
+        td.textContent = String(value);
+        tr.appendChild(td);
+      }
+      rows.appendChild(tr);
+    }
+  } catch (error) {
+    statusBox.textContent = "Request failed: " + error.message;
+  } finally {
+    runButton.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
