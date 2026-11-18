@@ -14,6 +14,8 @@ This file distinguishes implemented and executed work from planned work.
 - Consecutive reference-route arc connectivity audit.
 - Folium map-generation code for observed GPS and supplied reference-route geometry.
 - Recorded dataset summary and written audit findings in docs/DATASET_AUDIT.md.
+- Log-space Viterbi decoder utility with disconnected-transition fallback and long-gap/missing-candidate handling.
+- Three unit tests for the Viterbi decoder pass locally.
 
 ## Remaining implementation work
 
@@ -22,14 +24,15 @@ This file distinguishes implemented and executed work from planned work.
 - At least five trained and evaluated model families, with trip-group-aware validation.
 - Candidate miss-rate, observation-level accuracy, Macro F1, log loss and route-continuity evaluation.
 - Bayesian hyperparameter optimisation for the selected model, including retained trial results.
-- HMM emission and transition modelling plus Viterbi decoding.
-- Classifier-only versus classifier-plus-HMM route comparison.
+- Integration of the Viterbi utility with a trained candidate classifier and the full map-matching pipeline.
+- Classifier-only versus classifier-plus-HMM route comparison on the student-testing trips.
 - FastAPI inference backend with server-side reference data and evaluation.
 - Evaluator-facing UI that calls the API.
 - End-to-end integration and technical report.
 
 ## Important
 
-The repository currently contains genuine EDA and data-integrity results, not trained-model
-performance results. Do not claim that pending components are complete. Update this document
+The repository currently contains genuine EDA and data-integrity results plus a unit-tested
+Viterbi utility. It does not yet contain trained model performance results or a complete
+prediction pipeline. Do not claim pending components are complete. Update this document
 as each component is implemented, executed and verified.
