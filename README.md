@@ -14,7 +14,7 @@ PathSnap is a student project for reconstructing road-network routes from noisy 
 - FastAPI inference backend and browser-based evaluator UI.
 - Unit tests and a GitHub Actions CI workflow.
 
-**Important:** the scripts for candidate building, five-model training and Optuna tuning are supplied but have not yet been run end-to-end by the student on the local machine. No model scores are prefilled or fabricated. The target used by the current prototype is the spatially nearest arc in the supplied reference route, not a timestamp-aligned ground-truth label. This assumption must be validated and reported.
+**Important:** the scripts for candidate building, five-model training and Optuna tuning are supplied but have not yet been run end-to-end by the student on the local machine. No model scores are prefilled or fabricated. The target used by the current prototype is a spatial proxy: it selects the nearest point-to-segment distance among a shortlist of up to 12 midpoint-nearest arcs in the supplied reference route. It is not a timestamp-aligned ground-truth label. This assumption must be validated and reported.
 
 ## Dataset layout
 
