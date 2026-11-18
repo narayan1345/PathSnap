@@ -4,7 +4,7 @@ Run after candidate generation and baseline model comparison:
 python scripts/tune_extratrees.py --trials 15 --folds 3
 
 The objective is mean per-trip Macro F1 under GroupKFold by trip_id. Labels are
-nearest-reference-arc spatial proxies, not timestamp-aligned route labels.
+nearest reference-route arc within the 12-midpoint-neighbour shortlist, refined by projected point-to-segment distance (spatial proxy), not timestamp-aligned route labels.
 """
 from __future__ import annotations
 
