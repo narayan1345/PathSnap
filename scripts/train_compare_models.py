@@ -27,7 +27,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.utils.class_weight import compute_sample_weight
 
-from pathsnap.candidates import FEATURE_COLUMNS, endpoints_for_trip, load_trip_folder
+from pathsnap.candidates import FEATURE_COLUMNS, load_trip_folder
 
 
 SEED = 42
@@ -61,15 +61,17 @@ def fit_model(model, x, y):
     # Balanced sample weights are applied to tree/boosting estimators that do
     # not expose class_weight in a consistent way. Logistic regression has it
     # directly in the estimator configuration.
-    if hasattr(model, "named_steps"):  # sklearn Pipeline (Logistic Regression)
-        model.fit(x, y)
-    else:
+    if isinstance(model, HistGradientBoostingClassifier):
         weights = compute_sample_weight(class_weight="balanced", y=y)
         model.fit(x, y, sample_weight=weights)
+    else:
+        # Logistic regression, decision tree, random forest and extra trees
+        # already use class_weight="balanced" in make_models().
+        model.fit(x, y)
 
 
 def evaluate_model(model, candidates: pd.DataFrame, observations: pd.DataFrame,
-                   endpoints_by_trip: dict[str, dict[int, tuple[int, int]]]):
+                   endpoints_by_trip: dict[str, tuple[np.ndarray, np.ndarray]]):
     x = candidates[FEATURE_COLUMNS].to_numpy(dtype=float)
     start = time.perf_counter()
     probabilities = model.predict_proba(x)[:, 1]
