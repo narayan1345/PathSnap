@@ -27,6 +27,9 @@ artifacts/*
 !artifacts/.gitkeep
 results/*
 !results/.gitkeep
+!results/dataset_summary.json
+!results/missing_files.csv
+!results/trip_inventory.csv
 
 # Secrets and local configuration
 .env
