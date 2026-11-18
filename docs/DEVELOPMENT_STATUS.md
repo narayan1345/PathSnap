@@ -38,7 +38,7 @@ requires a full local dataset run and evaluation.
 ## Important limitations
 
 The current target-generation approach is a spatial proxy: for each sampled observation,
-it selects the nearest arc among a shortlist of arcs appearing in the reference route.
+it selects the nearest point-to-segment distance among a shortlist of up to 12 midpoint-nearest arcs appearing in the reference route.
 It is not guaranteed to be the true time-aligned arc for that observation. Model scores
 based on this proxy must be clearly qualified and should not be represented as definitive
 map-matching performance without validating the label alignment.
