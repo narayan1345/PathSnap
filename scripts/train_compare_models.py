@@ -19,7 +19,8 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import ExtraTreesClassifier, HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score, log_loss
+from sklearn.base import clone
+from sklearn.metrics import confusion_matrix, f1_score, log_loss, precision_score, recall_score
 from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -60,7 +61,7 @@ def fit_model(model, x, y):
     # Balanced sample weights are applied to tree/boosting estimators that do
     # not expose class_weight in a consistent way. Logistic regression has it
     # directly in the estimator configuration.
-    if isinstance(model, type(make_models()["LogisticRegression"])):
+    if hasattr(model, "named_steps"):  # sklearn Pipeline (Logistic Regression)
         model.fit(x, y)
     else:
         weights = compute_sample_weight(class_weight="balanced", y=y)
@@ -101,26 +102,33 @@ def evaluate_model(model, candidates: pd.DataFrame, observations: pd.DataFrame,
         )))
     macro_f1 = float(np.mean(per_trip_macro_f1)) if per_trip_macro_f1 else float("nan")
 
-    candidate_log_loss = float(log_loss(
-        candidates.target.to_numpy(dtype=int), probabilities, labels=[0, 1]
-    ))
+    candidate_truth = candidates.target.to_numpy(dtype=int)
+    candidate_prediction = (probabilities >= 0.5).astype(int)
+    candidate_log_loss = float(log_loss(candidate_truth, probabilities, labels=[0, 1]))
+    candidate_precision = float(precision_score(candidate_truth, candidate_prediction, zero_division=0))
+    candidate_recall = float(recall_score(candidate_truth, candidate_prediction, zero_division=0))
+    candidate_f1 = float(f1_score(candidate_truth, candidate_prediction, zero_division=0))
+    tn, fp, fn, tp = confusion_matrix(candidate_truth, candidate_prediction, labels=[0, 1]).ravel()
     candidate_miss_rate = float(observations.candidate_miss.mean())
 
     continuity_values = []
     for trip_id, part in top.groupby("trip_id"):
         part = part.sort_values("observation_index")
-        endpoints = endpoints_by_trip.get(str(trip_id), {})
+        endpoint_arrays = endpoints_by_trip.get(str(trip_id))
         arc_sequence = part.arc_id.astype(int).to_numpy()
-        if len(arc_sequence) < 2:
+        if len(arc_sequence) < 2 or endpoint_arrays is None:
             continue
-        connected = []
-        for previous_arc, current_arc in zip(arc_sequence[:-1], arc_sequence[1:]):
-            previous_end = endpoints.get(int(previous_arc), (None, None))[1]
-            current_start = endpoints.get(int(current_arc), (None, None))[0]
-            connected.append(
-                previous_arc == current_arc
-                or (previous_end is not None and previous_end == current_start)
-            )
+        from_nodes, to_nodes = endpoint_arrays
+        valid = (
+            (arc_sequence[:-1] >= 0) & (arc_sequence[:-1] < len(to_nodes))
+            & (arc_sequence[1:] >= 0) & (arc_sequence[1:] < len(from_nodes))
+        )
+        connected = np.zeros(len(arc_sequence) - 1, dtype=bool)
+        prev_ids, next_ids = arc_sequence[:-1], arc_sequence[1:]
+        connected[valid] = (
+            (prev_ids[valid] == next_ids[valid])
+            | (to_nodes[prev_ids[valid]] == from_nodes[next_ids[valid]])
+        )
         continuity_values.append(float(np.mean(connected)))
     route_continuity = float(np.mean(continuity_values)) if continuity_values else float("nan")
 
@@ -128,6 +136,13 @@ def evaluate_model(model, candidates: pd.DataFrame, observations: pd.DataFrame,
         "top1_accuracy": top1_accuracy,
         "macro_f1_mean_per_trip": macro_f1,
         "candidate_binary_log_loss": candidate_log_loss,
+        "candidate_binary_precision": candidate_precision,
+        "candidate_binary_recall": candidate_recall,
+        "candidate_binary_f1": candidate_f1,
+        "candidate_tn": int(tn),
+        "candidate_fp": int(fp),
+        "candidate_fn": int(fn),
+        "candidate_tp": int(tp),
         "candidate_miss_rate": candidate_miss_rate,
         "direct_route_continuity": route_continuity,
         "inference_seconds": inference_seconds,
@@ -139,6 +154,7 @@ def evaluate_model(model, candidates: pd.DataFrame, observations: pd.DataFrame,
 
 
 def load_endpoints(data_root: Path, trip_ids: set[str]):
+    """Load compact NumPy endpoint arrays; avoid millions of Python dict entries."""
     lookup = {}
     for split in ("train", "student_test"):
         split_dir = data_root / split
@@ -146,7 +162,10 @@ def load_endpoints(data_root: Path, trip_ids: set[str]):
             folder = split_dir / trip_id
             if folder.is_dir():
                 _, _, arcs, _ = load_trip_folder(folder)
-                lookup[trip_id] = endpoints_for_trip(arcs)
+                lookup[trip_id] = (
+                    arcs.from_node_id.to_numpy(dtype=np.int32),
+                    arcs.to_node_id.to_numpy(dtype=np.int32),
+                )
     return lookup
 
 
@@ -206,7 +225,7 @@ def main():
             valid_obs = train_observations[
                 train_observations.trip_id.astype(str).isin(valid_trip_ids)
             ]
-            model = joblib.loads(joblib.dumps(prototype))
+            model = clone(prototype)
             x_train = fold_train[FEATURE_COLUMNS].to_numpy(dtype=float)
             y_train = fold_train.target.to_numpy(dtype=int)
             fit_model(model, x_train, y_train)
@@ -217,6 +236,9 @@ def main():
                 "top1_accuracy": metrics["top1_accuracy"],
                 "macro_f1_mean_per_trip": metrics["macro_f1_mean_per_trip"],
                 "candidate_binary_log_loss": metrics["candidate_binary_log_loss"],
+                "candidate_binary_precision": metrics["candidate_binary_precision"],
+                "candidate_binary_recall": metrics["candidate_binary_recall"],
+                "candidate_binary_f1": metrics["candidate_binary_f1"],
                 "candidate_miss_rate": metrics["candidate_miss_rate"],
             })
             print(
@@ -227,7 +249,7 @@ def main():
 
         # Refit on all candidate-hit training observations, then evaluate once
         # on the separate student-testing partition.
-        final_model = joblib.loads(joblib.dumps(prototype))
+        final_model = clone(prototype)
         started = time.perf_counter()
         fit_model(
             final_model,
@@ -255,6 +277,13 @@ def main():
             "student_test_top1_accuracy": final_metrics["top1_accuracy"],
             "student_test_macro_f1": final_metrics["macro_f1_mean_per_trip"],
             "student_test_candidate_binary_log_loss": final_metrics["candidate_binary_log_loss"],
+            "student_test_candidate_binary_precision": final_metrics["candidate_binary_precision"],
+            "student_test_candidate_binary_recall": final_metrics["candidate_binary_recall"],
+            "student_test_candidate_binary_f1": final_metrics["candidate_binary_f1"],
+            "student_test_candidate_tn": final_metrics["candidate_tn"],
+            "student_test_candidate_fp": final_metrics["candidate_fp"],
+            "student_test_candidate_fn": final_metrics["candidate_fn"],
+            "student_test_candidate_tp": final_metrics["candidate_tp"],
             "student_test_candidate_miss_rate": final_metrics["candidate_miss_rate"],
             "student_test_direct_route_continuity": final_metrics["direct_route_continuity"],
             "training_seconds": training_seconds,
