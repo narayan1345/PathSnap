@@ -1,0 +1,17 @@
+numpy
+pandas
+scipy
+scikit-learn
+matplotlib
+seaborn
+networkx
+folium
+jupyter
+ipykernel
+xgboost
+lightgbm
+catboost
+optuna
+fastapi
+uvicorn[standard]
+joblib
