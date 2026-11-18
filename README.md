@@ -37,6 +37,7 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+python -m pip install -e .
 ~~~
 
 ## Run dataset exploration
@@ -73,11 +74,11 @@ The supplied development data audit found 80 training trips and 10 student-testi
 
 There are 7,550 timestamp gaps greater than one second; 42 trips have a maximum gap over 10 seconds and 23 trips over 60 seconds. The largest gap is 153,064 seconds in training trip 00000090.
 
-See docs/DATASET_AUDIT.md, results/dataset_summary.json and the generated results/trip_inventory.csv. These are dataset inspection results, not model performance results.
+See docs/DATASET_AUDIT.md, results/dataset_summary.json and results/trip_inventory.csv. These are dataset inspection results, not model performance results.
 
 ## Viterbi utility
 
-The decoder implementation is src/pathsnap/hmm.py, with design notes in docs/HMM_DECODER.md and unit tests in tests/test_hmm.py. Run the tests with:
+The decoder implementation is src/pathsnap/hmm.py, with design notes in docs/HMM_DECODER.md and unit tests in tests/test_hmm.py. Run tests with:
 
 ~~~
 python -m unittest discover -s tests -v
