@@ -148,7 +148,7 @@ def main():
         ),
         "student_test_candidate_miss_rate": float(test_obs.candidate_miss.mean()),
         "candidate_label_definition": (
-            "Nearest route arc by projected point-to-segment distance; spatial proxy, "
+            "Nearest point-to-segment distance among up to 12 midpoint-nearest route arcs; spatial proxy, "
             "not time-aligned ground truth."
         ),
     }
