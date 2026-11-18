@@ -30,6 +30,16 @@ results/*
 !results/dataset_summary.json
 !results/missing_files.csv
 !results/trip_inventory.csv
+!results/model_comparison.csv
+!results/cross_validation_results.csv
+!results/training_metadata.json
+!results/optuna_trials.csv
+!results/optuna_best_params.json
+!results/tuned_model_student_test_metrics.json
+!results/tuned_vs_untuned_comparison.csv
+!results/student_test_predictions_*.csv.gz
+!results/*.png
+!results/*.json
 
 # Secrets and local configuration
 .env
